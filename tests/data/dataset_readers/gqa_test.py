@@ -5,7 +5,7 @@ from torch import Tensor
 
 from allennlp.common.testing import AllenNlpTestCase
 from allennlp.data import Batch, Vocabulary
-from allennlp.data.dataset_readers import VQAv2Reader
+from allennlp.data.dataset_readers import GQAReader
 from allennlp.data.image_loader import DetectronImageLoader
 from allennlp.data.tokenizers import WhitespaceTokenizer
 from allennlp.data.token_indexers import SingleIdTokenIndexer
@@ -34,7 +34,7 @@ class FakeRegionDetector(RegionDetector):
         return {"features": features, "coordinates": coordinates}
 
 
-class TestVQAv2Reader(AllenNlpTestCase):
+class TestGQAReader(AllenNlpTestCase):
     def test_read(self):
         reader = GQAReader(
             image_dir=self.FIXTURES_ROOT / "data" / "gqa" / "images",
@@ -44,33 +44,64 @@ class TestVQAv2Reader(AllenNlpTestCase):
             tokenizer=WhitespaceTokenizer(),
             token_indexers={"tokens": SingleIdTokenIndexer()},
         )
-        instances = list(
-            reader.read(
-                [
-                    "test_fixtures/data/gqa/questions.json",
-                ]
-            )
-        )
+
+        instances = list(reader.read("test_fixtures/data/gqa/questions.json"))
         assert len(instances) == 1
 
         instance = instances[0]
-        assert len(instance.fields) == 5
-        assert len(instance["question"]) == 7
+        assert len(instance.fields) == 4
+        assert len(instance["question"]) == 6
         question_tokens = [t.text for t in instance["question"]]
-        assert question_tokens == ["What", "is", "this", "photo", "taken", "looking", "through?"]
-        assert len(instance["labels"]) == 5
-        labels = [field.label for field in instance["labels"].field_list]
-        assert labels == ["net", "netting", "mesh", "pitcher", "orange"]
-        assert torch.all(
-            instance["label_weights"].tensor == torch.tensor([1.0, 0.3, 0.3, 0.3, 0.3])
-        )
+        assert question_tokens == ["What", "is", "hanging", "above", "the", "chalkboard?"]
+        assert instance["label"].label == "picture"
 
         batch = Batch(instances)
         batch.index_instances(Vocabulary())
         tensors = batch.as_tensor_dict()
 
         # (batch size, num boxes (fake), num features (fake))
-        assert tensors["box_features"].size() == (3, 1, 10)
+        assert tensors["box_features"].size() == (1, 1, 10)
 
         # (batch size, num boxes (fake), 4 coords)
-        assert tensors["box_coordinates"].size() == (3, 1, 4)
+        assert tensors["box_coordinates"].size() == (1, 1, 4)
+
+    def test_read_from_dir(self):
+        reader = GQAReader(
+            image_dir=self.FIXTURES_ROOT / "data" / "gqa" / "images",
+            image_loader=DetectronImageLoader(),
+            image_featurizer=NullGridEmbedder(),
+            region_detector=FakeRegionDetector(),
+            tokenizer=WhitespaceTokenizer(),
+            token_indexers={"tokens": SingleIdTokenIndexer()},
+        )
+        # Test reading from multiple files in a directory
+        instances = list(reader.read("test_fixtures/data/gqa/question_dir/"))
+        assert len(instances) == 2
+
+        instance = instances[1]
+        assert len(instance.fields) == 4
+        assert len(instance["question"]) == 10
+        question_tokens = [t.text for t in instance["question"]]
+        assert question_tokens == [
+            "Does",
+            "the",
+            "table",
+            "below",
+            "the",
+            "water",
+            "look",
+            "wooden",
+            "and",
+            "round?",
+        ]
+        assert instance["label"].label == "yes"
+
+        batch = Batch(instances)
+        batch.index_instances(Vocabulary())
+        tensors = batch.as_tensor_dict()
+
+        # (batch size, num boxes (fake), num features (fake))
+        assert tensors["box_features"].size() == (2, 1, 10)
+
+        # (batch size, num boxes (fake), 4 coords)
+        assert tensors["box_coordinates"].size() == (2, 1, 4)

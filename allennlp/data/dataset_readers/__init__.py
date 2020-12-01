@@ -19,3 +19,4 @@ from allennlp.data.dataset_readers.babi import BabiReader
 from allennlp.data.dataset_readers.text_classification_json import TextClassificationJsonReader
 from allennlp.data.dataset_readers.nlvr2 import Nlvr2Reader
 from allennlp.data.dataset_readers.vqav2 import VQAv2Reader
+from allennlp.data.dataset_readers.gqa import GQAReader
